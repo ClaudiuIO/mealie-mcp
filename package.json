@@ -1,0 +1,27 @@
+{
+  "name": "mealie-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for saving recipes to Mealie",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "mealie-mcp": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": ["mcp", "mealie", "recipe"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
