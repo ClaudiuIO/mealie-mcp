@@ -1,4 +1,6 @@
-import { MealieConfig, MealieRecipe, CreateRecipeResponse } from './types.js';
+import { MealieConfig, MealieRecipe } from './types.js';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class MealieClient {
   private config: MealieConfig;
@@ -30,13 +32,13 @@ export class MealieClient {
         );
       }
 
-      const data = await response.json() as CreateRecipeResponse;
+      const data = await response.json() as string;
 
-      if (!data.slug) {
+      if (!data) {
         throw new Error('No slug returned from create recipe API');
       }
 
-      return data.slug;
+      return data;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Error creating recipe: ${error.message}`);
@@ -53,7 +55,7 @@ export class MealieClient {
 
     try {
       const response = await fetch(url, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.config.apiToken}`
@@ -76,6 +78,64 @@ export class MealieClient {
   }
 
   /**
+   * Gets a recipe by its slug
+   */
+  async getRecipe(slug: string): Promise<MealieRecipe> {
+    const url = `${this.config.mealieUrl}/api/recipes/${slug}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.config.apiToken}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to get recipe (${response.status} ${response.statusText}): ${errorText}`
+        );
+      }
+
+      return await response.json() as MealieRecipe;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error getting recipe: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Deletes a recipe by its slug
+   */
+  async deleteRecipe(slug: string): Promise<void> {
+    const url = `${this.config.mealieUrl}/api/recipes/${slug}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${this.config.apiToken}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to delete recipe (${response.status} ${response.statusText}): ${errorText}`
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error deleting recipe: ${error.message}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Complete workflow: Create recipe and update with full details
    */
   async saveRecipe(recipe: MealieRecipe): Promise<string> {
@@ -92,6 +152,37 @@ export class MealieClient {
       throw new Error(
         `Recipe created with slug '${slug}' but failed to update: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
+    }
+  }
+
+  async updateRecipeImage(slug: string, imagePath: string, extension: string): Promise<void> {
+    const url = `${this.config.mealieUrl}/api/recipes/${slug}/image`;
+    
+    const imageBuffer = fs.readFileSync(imagePath);
+    const formData = new FormData();
+    formData.append('image', new Blob([imageBuffer]), path.basename(imagePath));
+    formData.append('extension', extension);
+
+    try {
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${this.config.apiToken}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to upload recipe image (${response.status} ${response.statusText}): ${errorText}`
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Error uploading recipe image: ${error.message}`);
+      }
+      throw error;
     }
   }
 }

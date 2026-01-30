@@ -48,7 +48,12 @@ export interface MealieRecipe {
   description?: string;
   recipeCategory?: string[];
   tags?: string[];
-  tools?: string[];
+  tools?: Array<{
+    id?: string;
+    name: string;
+    slug?: string;
+    onHand?: boolean;
+  }>;
   rating?: number;
   orgURL?: string;
   dateAdded?: string;
@@ -57,18 +62,25 @@ export interface MealieRecipe {
   updateAt?: string;
   lastMade?: string;
   recipeIngredient?: Array<{
+    id?: string;
     title?: string;
     note?: string;
-    unit?: string;
-    food?: string;
+    unit?: string | { id?: string; name: string } | null;
+    food?: string | { id?: string; name: string } | null;
     disableAmount?: boolean;
+    isFood?: boolean;
+    display?: string;
     quantity?: number;
+    originalText?: string | null;
+    referenceId?: string;
   }>;
   recipeInstructions?: Array<{
     id?: string;
     title?: string;
     text: string;
-    ingredientReferences?: string[];
+    ingredientReferences?: Array<{
+      referenceId?: string;
+    }>;
   }>;
   nutrition?: {
     calories?: string;
