@@ -1,6 +1,7 @@
 import { MealieConfig, MealieRecipe } from './types.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 
 export class MealieClient {
   private config: MealieConfig;
@@ -49,9 +50,49 @@ export class MealieClient {
 
   /**
    * Step 2: Update the recipe with full details
+   * Automatically normalizes ingredients and instructions to match Mealie's expected format
    */
   async updateRecipe(slug: string, recipe: MealieRecipe): Promise<void> {
     const url = `${this.config.mealieUrl}/api/recipes/${slug}`;
+
+    // Normalize ingredients: add required fields if missing
+    if (recipe.recipeIngredient) {
+      recipe.recipeIngredient = recipe.recipeIngredient.map(ing => ({
+        ...ing,
+        // Set display to note if not provided
+        display: ing.display || ing.note || '',
+        // Ensure unit and food are null if not provided
+        unit: ing.unit === undefined ? null : ing.unit,
+        food: ing.food === undefined ? null : ing.food,
+        // Set isFood to false if not provided
+        isFood: ing.isFood !== undefined ? ing.isFood : false,
+        // Set disableAmount to true if not provided
+        disableAmount: ing.disableAmount !== undefined ? ing.disableAmount : true,
+        // Generate referenceId if not provided
+        referenceId: ing.referenceId || randomUUID()
+      }));
+    }
+
+    // Normalize instructions: add required fields if missing
+    if (recipe.recipeInstructions) {
+      recipe.recipeInstructions = recipe.recipeInstructions.map(inst => ({
+        ...inst,
+        // Set title to empty string if not provided
+        title: inst.title !== undefined ? inst.title : '',
+        // Set ingredientReferences to empty array if not provided
+        ingredientReferences: inst.ingredientReferences || []
+      }));
+    }
+
+    // Remove categories and tags as they must pre-exist in Mealie database
+    // Mealie API does not support creating categories/tags on-the-fly
+    // They must be created via the web UI first before they can be assigned
+    if (recipe.recipeCategory?.length) {
+      recipe.recipeCategory = [];
+    }
+    if (recipe.tags?.length) {
+      recipe.tags = [];
+    }
 
     try {
       const response = await fetch(url, {

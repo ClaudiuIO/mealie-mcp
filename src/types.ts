@@ -1,6 +1,7 @@
 // schema.org/Recipe format (input from LLM)
 export interface SchemaOrgRecipe {
   name: string;
+  "@type"?: string;
   description?: string;
   recipeYield?: string;
   totalTime?: string;

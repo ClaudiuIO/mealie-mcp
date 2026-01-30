@@ -5,6 +5,8 @@ import { SchemaOrgRecipe, MealieRecipe } from './types.js';
  */
 export function convertSchemaOrgToMealie(schemaRecipe: SchemaOrgRecipe): MealieRecipe {
   // Extract categories
+  // NOTE: Categories and tags are extracted here but will be automatically
+  // removed by updateRecipe() as they must pre-exist in Mealie database
   const categories: string[] = [];
   if (schemaRecipe.recipeCategory) {
     if (Array.isArray(schemaRecipe.recipeCategory)) {
@@ -22,6 +24,7 @@ export function convertSchemaOrgToMealie(schemaRecipe: SchemaOrgRecipe): MealieR
   }
 
   // Extract tags from keywords
+  // NOTE: Tags will be automatically removed by updateRecipe()
   const tags: string[] = [];
   if (schemaRecipe.keywords) {
     if (Array.isArray(schemaRecipe.keywords)) {
@@ -32,18 +35,15 @@ export function convertSchemaOrgToMealie(schemaRecipe: SchemaOrgRecipe): MealieR
     }
   }
 
-  // Convert ingredients
+  // Convert ingredients - use simplified format
+  // The updateRecipe method will automatically add all required fields
   const recipeIngredient = (schemaRecipe.recipeIngredient || []).map(ingredient => ({
-    note: ingredient,
-    title: '',
-    unit: undefined,
-    food: undefined,
-    disableAmount: false,
-    quantity: undefined
+    note: ingredient
   }));
 
-  // Convert instructions
-  const recipeInstructions: Array<{ text: string; title?: string }> = [];
+  // Convert instructions - use simplified format
+  // The updateRecipe method will automatically add title and ingredientReferences
+  const recipeInstructions: Array<{ text: string }> = [];
   if (schemaRecipe.recipeInstructions) {
     if (typeof schemaRecipe.recipeInstructions === 'string') {
       // Split by newlines or numbered steps
@@ -62,10 +62,8 @@ export function convertSchemaOrgToMealie(schemaRecipe: SchemaOrgRecipe): MealieR
         if (typeof instruction === 'string') {
           recipeInstructions.push({ text: instruction });
         } else if (instruction.text) {
-          recipeInstructions.push({
-            text: instruction.text,
-            title: instruction.name
-          });
+          // Just use the text, ignore the name/title from schema.org
+          recipeInstructions.push({ text: instruction.text });
         }
       });
     }
