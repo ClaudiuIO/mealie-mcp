@@ -7,8 +7,13 @@ A Model Context Protocol (MCP) server that allows LLMs to save recipes directly 
 - Accepts recipes in standard schema.org/Recipe format
 - Automatically converts to Mealie's recipe format
 - Two-step API workflow (create + update) handled transparently
-- Supports ingredients, instructions, nutrition info, categories, tags, and more
+- Supports ingredients, instructions, nutrition info, and more
+- Automatic field normalization (referenceId, display fields, etc.)
 - Proper error handling with descriptive messages
+
+### Current Limitations
+
+- **Categories and Tags**: Due to Mealie API limitations, categories and tags are not saved automatically. They must be created manually in the Mealie web UI before they can be assigned to recipes. See [CATEGORIES_TAGS_LIMITATION.md](CATEGORIES_TAGS_LIMITATION.md) for details.
 
 ## Installation
 
@@ -145,9 +150,9 @@ The MCP tool accepts recipes in schema.org/Recipe format with the following fiel
 - `totalTime`: Total time (ISO 8601 duration, e.g., "PT30M")
 - `prepTime`: Preparation time (ISO 8601 duration)
 - `cookTime`: Cooking time (ISO 8601 duration)
-- `recipeCategory`: Category or array of categories
+- `recipeCategory`: Category or array of categories ⚠️ **Not currently saved** (see limitations)
 - `recipeCuisine`: Cuisine type
-- `keywords`: Tags/keywords (string or array)
+- `keywords`: Tags/keywords (string or array) ⚠️ **Not currently saved** (see limitations)
 - `recipeIngredient`: Array of ingredient strings
 - `recipeInstructions`: String or array of instruction objects
 - `nutrition`: Object with nutritional information
@@ -171,12 +176,16 @@ npm run build
 ```
 mealie-mcp/
 ├── src/
-│   ├── index.ts           # MCP server entry point
-│   ├── config.ts          # Configuration management
-│   ├── types.ts           # TypeScript interfaces
-│   ├── converter.ts       # Schema.org to Mealie converter
-│   └── mealie-client.ts   # Mealie API client
-├── build/                 # Compiled JavaScript
+│   ├── index.ts                    # MCP server entry point
+│   ├── config.ts                   # Configuration management
+│   ├── types.ts                    # TypeScript interfaces
+│   ├── converter.ts                # Schema.org to Mealie converter
+│   ├── converter.test.ts           # Converter tests
+│   ├── mealie-client.ts            # Mealie API client
+│   └── mealie-client.test.ts       # Integration tests
+├── build/                          # Compiled JavaScript
+├── MEALIE_API_STRUCTURE.md         # API format documentation
+├── CATEGORIES_TAGS_LIMITATION.md   # Categories/tags limitation details
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -203,17 +212,46 @@ mealie-mcp/
 - The recipe was created in Mealie but detailed information failed to save
 - Check the slug mentioned in the error and manually update in Mealie if needed
 
-## API Workflow
+### Categories or tags not showing up
+- Categories and tags must be created manually in Mealie first
+- Navigate to Settings → Categories/Tags in your Mealie instance
+- Create the categories/tags you want to use
+- See [CATEGORIES_TAGS_LIMITATION.md](CATEGORIES_TAGS_LIMITATION.md) for more details
 
-The server implements Mealie's two-step recipe creation process:
+## How It Works
 
-1. **POST** `/api/recipes` with `{"name": "Recipe Name"}`
-   - Returns a slug for the new recipe
+The server handles the complete workflow automatically:
 
-2. **PUT** `/api/recipes/{slug}` with full recipe data
-   - Updates the recipe with all details
+1. **Schema.org Input**: LLM provides recipe in standard schema.org format
+2. **Conversion**: Converts to Mealie's internal format
+3. **Create**: `POST /api/recipes` with just the recipe name → returns a slug
+4. **Normalize**: Automatically adds all required Mealie fields:
+   - Generates `referenceId` (UUID) for each ingredient
+   - Sets `display`, `unit`, `food`, `isFood`, `disableAmount` fields
+   - Adds `title` and `ingredientReferences` to instructions
+   - Removes categories/tags (Mealie API limitation)
+5. **Update**: `PATCH /api/recipes/{slug}` with complete recipe data
 
-If step 2 fails, the recipe will exist in Mealie with just a name and can be edited manually.
+If the update fails, the recipe will exist in Mealie with just a name and can be edited manually.
+
+For detailed information about the data structure, see [MEALIE_API_STRUCTURE.md](MEALIE_API_STRUCTURE.md).
+
+## Documentation
+
+- **[MEALIE_API_STRUCTURE.md](MEALIE_API_STRUCTURE.md)** - Detailed explanation of Mealie's recipe format, the data workflow, and known issues
+- **[CATEGORIES_TAGS_LIMITATION.md](CATEGORIES_TAGS_LIMITATION.md)** - Why categories and tags aren't saved and how to work around it
+
+## Testing
+
+Run integration tests (requires `.mealie-mcp.json` configuration):
+```bash
+npm test
+```
+
+Run converter tests only:
+```bash
+npm test -- converter.test
+```
 
 ## License
 
