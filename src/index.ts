@@ -12,6 +12,9 @@ import { loadConfig } from './config.js';
 import { MealieClient } from './mealie-client.js';
 import { convertSchemaOrgToMealie } from './converter.js';
 import { SchemaOrgRecipe } from './types.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 // Create MCP server
 const server = new Server(
@@ -25,6 +28,62 @@ const server = new Server(
     },
   }
 );
+
+/**
+ * Download an image from a URL to a temporary file
+ * @param imageUrl - The URL of the image to download
+ * @returns An object with the temp file path and extension, or null if download failed
+ */
+async function downloadImage(imageUrl: string): Promise<{ tempPath: string; extension: string } | null> {
+  try {
+    // Validate URL
+    const url = new URL(imageUrl);
+
+    // Download the image
+    const response = await fetch(imageUrl);
+
+    if (!response.ok) {
+      console.error(`Failed to download image from ${imageUrl}: ${response.status} ${response.statusText}`);
+      return null;
+    }
+
+    // Get content type to determine extension
+    const contentType = response.headers.get('content-type');
+    let extension = 'jpg'; // default
+
+    if (contentType) {
+      if (contentType.includes('png')) extension = 'png';
+      else if (contentType.includes('jpeg') || contentType.includes('jpg')) extension = 'jpg';
+      else if (contentType.includes('webp')) extension = 'webp';
+      else if (contentType.includes('gif')) extension = 'gif';
+      else {
+        console.error(`Unsupported image format: ${contentType}`);
+        return null;
+      }
+    } else {
+      // Try to extract extension from URL
+      const urlExtension = path.extname(url.pathname).toLowerCase().replace('.', '');
+      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(urlExtension)) {
+        extension = urlExtension === 'jpeg' ? 'jpg' : urlExtension;
+      }
+    }
+
+    // Create temp file
+    const tempDir = os.tmpdir();
+    const tempFileName = `mealie-recipe-image-${Date.now()}.${extension}`;
+    const tempPath = path.join(tempDir, tempFileName);
+
+    // Write image data to temp file
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    fs.writeFileSync(tempPath, buffer);
+
+    return { tempPath, extension };
+  } catch (error) {
+    console.error(`Error downloading image from ${imageUrl}:`, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
 
 // Tool definition for saving recipes
 const SAVE_RECIPE_TOOL = {
@@ -175,17 +234,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Create Mealie client
       const client = new MealieClient(config);
 
+      // Extract image URL if present
+      let imageUrl: string | null = null;
+      if (args.recipe.image) {
+        if (typeof args.recipe.image === 'string') {
+          imageUrl = args.recipe.image;
+        } else if (Array.isArray(args.recipe.image) && args.recipe.image.length > 0) {
+          imageUrl = args.recipe.image[0]; // Use the first image
+        }
+      }
+
+      // Download image if URL provided
+      let imageDownload: { tempPath: string; extension: string } | null = null;
+      if (imageUrl) {
+        console.error(`Downloading image from: ${imageUrl}`);
+        imageDownload = await downloadImage(imageUrl);
+        if (!imageDownload) {
+          console.error(`Warning: Failed to download image from ${imageUrl}, continuing without image`);
+        }
+      }
+
       // Convert recipe format
       const mealieRecipe = convertSchemaOrgToMealie(args.recipe);
 
       // Save recipe
       const slug = await client.saveRecipe(mealieRecipe);
 
+      // Upload image if downloaded successfully
+      let imageStatus = '';
+      if (imageDownload) {
+        try {
+          await client.updateRecipeImage(slug, imageDownload.tempPath, imageDownload.extension);
+          imageStatus = '\nImage uploaded successfully!';
+          console.error(`Image uploaded for recipe: ${slug}`);
+        } catch (error) {
+          imageStatus = `\nWarning: Recipe saved but image upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          console.error(`Failed to upload image for recipe ${slug}:`, error);
+        } finally {
+          // Clean up temp file
+          try {
+            fs.unlinkSync(imageDownload.tempPath);
+            console.error(`Cleaned up temp file: ${imageDownload.tempPath}`);
+          } catch (cleanupError) {
+            console.error(`Failed to clean up temp file ${imageDownload.tempPath}:`, cleanupError);
+          }
+        }
+      }
+
       return {
         content: [
           {
             type: 'text',
-            text: `Recipe "${args.recipe.name}" saved successfully to Mealie!\nSlug: ${slug}\nURL: ${config.mealieUrl}/recipe/${slug}`
+            text: `Recipe "${args.recipe.name}" saved successfully to Mealie!${imageStatus}\nSlug: ${slug}\nURL: ${config.mealieUrl}/recipe/${slug}`
           }
         ]
       };
